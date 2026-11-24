@@ -126,7 +126,16 @@ def main() -> int:
     frames = extract_frames_16fps(args.input, args.width, args.height)
     n_total = len(frames)
     chunk_len = 81
-    windows = [(0, n_total)] if n_total <= chunk_len else [(0, chunk_len), (max(0, n_total - chunk_len), n_total)]
+    stride = 68  # 13-frame smooth cosine crossfade overlap for arbitrary-length videos
+    if n_total <= chunk_len:
+        windows = [(0, n_total)]
+    else:
+        windows = []
+        s = 0
+        while s + chunk_len < n_total:
+            windows.append((s, s + chunk_len))
+            s += stride
+        windows.append((max(0, n_total - chunk_len), n_total))
 
     rendered = []
     for idx, (s, e) in enumerate(windows):
@@ -152,18 +161,19 @@ def main() -> int:
         ]
         rendered.append((s, arrs))
 
-    if len(rendered) == 1:
-        merged = rendered[0][1][:n_total]
-    else:
-        s1, c1 = rendered[0]
-        s2, c2 = rendered[1]
-        ov = (s1 + len(c1)) - s2
-        merged = list(c1[:s2])
-        for i in range(ov):
+    # Stitch arbitrary number of overlapping windows with smooth cosine crossfade
+    merged = list(rendered[0][1])
+    for s_next, c_next in rendered[1:]:
+        cur_len = len(merged)
+        ov = max(0, cur_len - s_next)
+        for i in range(min(ov, len(c_next))):
             w_b = 0.5 * (1.0 - math.cos(math.pi * (i + 0.5) / max(1, ov)))
-            merged.append((c1[s2 + i].astype(np.float32) * (1.0 - w_b) + c2[i].astype(np.float32) * w_b).clip(0, 255).astype(np.uint8))
-        merged.extend(c2[ov:])
-        merged = merged[:n_total]
+            merged[s_next + i] = (
+                merged[s_next + i].astype(np.float32) * (1.0 - w_b)
+                + c_next[i].astype(np.float32) * w_b
+            ).clip(0, 255).astype(np.uint8)
+        merged.extend(c_next[ov:])
+    merged = merged[:n_total]
 
     work = args.output_clean.parent / "_v2v_work"
     work.mkdir(parents=True, exist_ok=True)
