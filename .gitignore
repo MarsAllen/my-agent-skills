@@ -1,0 +1,11 @@
+# OS & Python
+.DS_Store
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+work/
+outputs/
+*.mp4
+*.wav
+*.mp3
